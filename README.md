@@ -40,7 +40,7 @@ Example config:
 
 ```json
 {
-  "model": "minimax/minimax-m2.5",
+  "model": "z-ai/glm-4.7-flash",
   "defaultBaseBranch": "main",
   "reasoningMode": "auto"
 }
