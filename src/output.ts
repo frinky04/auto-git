@@ -123,8 +123,8 @@ export function createConsoleOutput(): OutputWriter {
 export function createConsolePrompt(): PromptHandler {
   return {
     async confirm(message: string) {
-      const answer = await askLine(`${message} [y/N] `);
-      return /^y(es)?$/i.test(answer.trim());
+      const answer = (await askLine(`${message} [Y/n] `)).trim();
+      return answer === "" || /^y(es)?$/i.test(answer);
     },
     async chooseCommitAction(message: string) {
       const promptText = message.trim().length > 0 ? `${message} ` : "> ";
