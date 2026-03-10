@@ -3,6 +3,8 @@ export type OutputWriter = {
   error(message: string): void;
   stream?(chunk: string): void;
   endStream?(): void;
+  startSpinner?(message: string): void;
+  stopSpinner?(): void;
 };
 
 export type PromptHandler = {

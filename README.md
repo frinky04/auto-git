@@ -18,6 +18,7 @@ Reasoning uses `auto` mode by default, which lets OpenRouter/model defaults deci
 Commit generation uses token streaming when OpenRouter returns SSE, so you can see the commit message arrive in real time before confirmation.
 `autogit gitignore` inspects the project and creates or appends common `.gitignore` rules for detected stacks like Node.js, Python, and Rust.
 `autogit publish` creates a GitHub repository with `gh repo create`, sets `origin`, and pushes the current branch. It defaults to `private` unless you pass `--public`.
+The terminal UI includes a lightweight spinner while the model is thinking, then switches cleanly into streamed output when tokens arrive.
 
 ## Configuration
 

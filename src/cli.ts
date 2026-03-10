@@ -181,8 +181,8 @@ async function runCommitFlow(options: {
 
   const repoRoot = options.gitClient.resolveRepoRoot(options.cwd);
   const config = requireApiKey(options.config);
-  options.output?.info(`Generating commit message with model: ${options.model}`);
-  options.output?.info("Streaming commit message:");
+  options.output?.info(`Using model: ${options.model}`);
+  options.output?.startSpinner?.("Generating commit message");
 
   const request: OpenRouterRequest = {
     model: options.model,
@@ -201,17 +201,23 @@ async function runCommitFlow(options: {
     options.output,
     {
       onToken(token) {
+        if (!streamedAny) {
+          options.output?.stopSpinner?.();
+          options.output?.info("Draft commit message:");
+        }
         streamedAny = true;
         options.output?.stream?.(token);
       },
     },
   );
 
+  options.output?.stopSpinner?.();
+
   if (streamedAny) {
     options.output?.endStream?.();
   }
 
-  options.output?.info("Proposed commit message:");
+  options.output?.info("Final commit message:");
   options.output?.info("");
   options.output?.info(message);
   options.output?.info("");

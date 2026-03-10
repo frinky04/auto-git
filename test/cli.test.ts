@@ -12,6 +12,8 @@ test("runCli commit creates a commit from staged changes", async () => {
   const commits: string[] = [];
   const streamed: string[] = [];
   let streamEnded = 0;
+  let spinnerStarted = 0;
+  let spinnerStopped = 0;
 
   const exitCode = await runCli(["commit", "--yes"], {
     cwd: "/repo",
@@ -31,6 +33,12 @@ test("runCli commit creates a commit from staged changes", async () => {
       },
       endStream() {
         streamEnded += 1;
+      },
+      startSpinner() {
+        spinnerStarted += 1;
+      },
+      stopSpinner() {
+        spinnerStopped += 1;
       },
     },
     prompt: {
@@ -76,6 +84,9 @@ test("runCli commit creates a commit from staged changes", async () => {
   assert.deepEqual(commits, ["feat: add hello file"]);
   assert.deepEqual(streamed, ["feat: ", "add hello file"]);
   assert.equal(streamEnded, 1);
+  assert.equal(spinnerStarted, 1);
+  assert.equal(spinnerStopped, 2);
+  assert.ok(messages.some((message) => message.includes("Draft commit message:")));
   assert.ok(messages.some((message) => message.includes("Commit created.")));
 });
 
