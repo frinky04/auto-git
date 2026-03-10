@@ -1,6 +1,8 @@
 export type OutputWriter = {
   info(message: string): void;
   error(message: string): void;
+  stream?(chunk: string): void;
+  endStream?(): void;
 };
 
 export type PromptHandler = {
@@ -73,4 +75,7 @@ export type CommitMessageGenerator = (
   config: AppConfig & { apiKey: string },
   request: OpenRouterRequest,
   fetchImpl: typeof fetch,
+  options?: {
+    onToken?: (token: string) => void;
+  },
 ) => Promise<string>;

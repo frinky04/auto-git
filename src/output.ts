@@ -11,6 +11,12 @@ export function createConsoleOutput(): OutputWriter {
     error(message: string) {
       stderr.write(`${message}\n`);
     },
+    stream(chunk: string) {
+      stdout.write(chunk);
+    },
+    endStream() {
+      stdout.write("\n");
+    },
   };
 }
 

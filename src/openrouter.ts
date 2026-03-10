@@ -5,6 +5,9 @@ export async function generateCommitMessage(
   config: AppConfig,
   request: OpenRouterRequest,
   fetchImpl: typeof fetch,
+  options: {
+    onToken?: (token: string) => void;
+  } = {},
 ): Promise<string> {
   const body = {
     model: request.model,
@@ -19,6 +22,7 @@ export async function generateCommitMessage(
       },
     ],
     temperature: 0.2,
+    stream: true,
     ...(buildReasoningBody(request.reasoningMode) ?? {}),
   };
 
@@ -38,6 +42,15 @@ export async function generateCommitMessage(
     throw new UserError(`OpenRouter request failed (${response.status}): ${body}`);
   }
 
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType.includes("text/event-stream")) {
+    return parseStreamingCommitMessage(response, options.onToken);
+  }
+
+  return parseJsonCommitMessage(response);
+}
+
+async function parseJsonCommitMessage(response: Response): Promise<string> {
   const json = (await response.json()) as {
     choices?: Array<{
       message?: {
@@ -50,6 +63,58 @@ export async function generateCommitMessage(
   const text = flattenMessageContent(content);
   const sanitized = sanitizeCommitMessage(text);
 
+  if (!sanitized) {
+    throw new UserError("OpenRouter returned an empty commit message.");
+  }
+
+  return sanitized;
+}
+
+async function parseStreamingCommitMessage(
+  response: Response,
+  onToken?: (token: string) => void,
+): Promise<string> {
+  if (!response.body) {
+    throw new UserError("OpenRouter returned an empty streaming response body.");
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let combined = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+
+    let boundaryIndex = buffer.indexOf("\n\n");
+    while (boundaryIndex >= 0) {
+      const rawEvent = buffer.slice(0, boundaryIndex);
+      buffer = buffer.slice(boundaryIndex + 2);
+
+      const token = parseSseEvent(rawEvent);
+      if (token) {
+        combined += token;
+        onToken?.(token);
+      }
+
+      boundaryIndex = buffer.indexOf("\n\n");
+    }
+  }
+
+  buffer += decoder.decode();
+  const trailingToken = parseSseEvent(buffer);
+  if (trailingToken) {
+    combined += trailingToken;
+    onToken?.(trailingToken);
+  }
+
+  const sanitized = sanitizeCommitMessage(combined);
   if (!sanitized) {
     throw new UserError("OpenRouter returned an empty commit message.");
   }
@@ -116,8 +181,78 @@ function flattenMessageContent(
   return "";
 }
 
+function flattenDeltaContent(
+  content:
+    | string
+    | Array<{ type?: string; text?: string }>
+    | Array<{ type?: string; content?: string; text?: string }>
+    | undefined,
+): string {
+  if (typeof content === "string") {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => part.text ?? part.content ?? "")
+      .join("");
+  }
+
+  return "";
+}
+
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function parseSseEvent(rawEvent: string): string {
+  const trimmed = rawEvent.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const dataLines = trimmed
+    .split(/\r?\n/)
+    .filter((line) => !line.startsWith(":"))
+    .filter((line) => line.startsWith("data:"))
+    .map((line) => line.slice(5).trim());
+
+  if (dataLines.length === 0) {
+    return "";
+  }
+
+  const payload = dataLines.join("\n");
+  if (payload === "[DONE]") {
+    return "";
+  }
+
+  let parsed: {
+    error?: { message?: string };
+    choices?: Array<{
+      delta?: {
+        content?:
+          | string
+          | Array<{ type?: string; text?: string }>
+          | Array<{ type?: string; content?: string; text?: string }>;
+      };
+      message?: {
+        content?: string | Array<{ type?: string; text?: string }>;
+      };
+    }>;
+  };
+
+  try {
+    parsed = JSON.parse(payload);
+  } catch {
+    return "";
+  }
+
+  if (parsed.error?.message) {
+    throw new UserError(parsed.error.message);
+  }
+
+  const choice = parsed.choices?.[0];
+  return flattenDeltaContent(choice?.delta?.content) || flattenMessageContent(choice?.message?.content);
 }
 
 function buildReasoningBody(mode: OpenRouterRequest["reasoningMode"]):

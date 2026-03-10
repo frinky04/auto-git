@@ -10,6 +10,8 @@ import { runCli } from "../src/cli.ts";
 test("runCli commit creates a commit from staged changes", async () => {
   const messages: string[] = [];
   const commits: string[] = [];
+  const streamed: string[] = [];
+  let streamEnded = 0;
 
   const exitCode = await runCli(["commit", "--yes"], {
     cwd: "/repo",
@@ -23,6 +25,12 @@ test("runCli commit creates a commit from staged changes", async () => {
       },
       error(message: string) {
         messages.push(message);
+      },
+      stream(chunk: string) {
+        streamed.push(chunk);
+      },
+      endStream() {
+        streamEnded += 1;
       },
     },
     prompt: {
@@ -57,13 +65,17 @@ test("runCli commit creates a commit from staged changes", async () => {
         return "repo";
       },
     },
-    async generateCommitMessage() {
+    async generateCommitMessage(_, __, ___, options) {
+      options?.onToken?.("feat: ");
+      options?.onToken?.("add hello file");
       return "feat: add hello file";
     },
   });
 
   assert.equal(exitCode, 0);
   assert.deepEqual(commits, ["feat: add hello file"]);
+  assert.deepEqual(streamed, ["feat: ", "add hello file"]);
+  assert.equal(streamEnded, 1);
   assert.ok(messages.some((message) => message.includes("Commit created.")));
 });
 

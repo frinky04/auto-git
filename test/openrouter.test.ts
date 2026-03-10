@@ -49,6 +49,7 @@ test("generateCommitMessage omits reasoning in auto mode", async () => {
   );
 
   assert.equal(message, "feat: disable reasoning");
+  assert.equal(body?.stream, true);
   assert.equal(body?.reasoning, undefined);
 });
 
@@ -88,6 +89,7 @@ test("generateCommitMessage enables reasoning when requested", async () => {
   );
 
   assert.equal(message, "feat: enable reasoning");
+  assert.equal(body?.stream, true);
   assert.deepEqual(body?.reasoning, { enabled: true });
 });
 
@@ -127,5 +129,58 @@ test("generateCommitMessage disables reasoning when requested", async () => {
   );
 
   assert.equal(message, "feat: disable reasoning explicitly");
+  assert.equal(body?.stream, true);
   assert.deepEqual(body?.reasoning, { effort: "none" });
+});
+
+test("generateCommitMessage streams token chunks from SSE", async () => {
+  const streamed: string[] = [];
+
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(
+        new TextEncoder().encode(
+          [
+            ": OPENROUTER PROCESSING\n\n",
+            'data: {"choices":[{"delta":{"content":"feat: "}}]}\n\n',
+            'data: {"choices":[{"delta":{"content":"add streaming"}}]}\n\n',
+            "data: [DONE]\n\n",
+          ].join(""),
+        ),
+      );
+      controller.close();
+    },
+  });
+
+  const fetchImpl: typeof fetch = async () =>
+    new Response(stream, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    });
+
+  const message = await generateCommitMessage(
+    {
+      apiKey: "test-key",
+      model: "qwen/qwen3-235b-a22b-2507",
+      baseUrl: "https://openrouter.ai/api/v1",
+      systemPrompt: "test prompt",
+      reasoningMode: "auto",
+    },
+    {
+      model: "qwen/qwen3-235b-a22b-2507",
+      systemPrompt: "test prompt",
+      diff: "diff --git a/file b/file",
+      repoRoot: "/repo",
+      reasoningMode: "auto",
+    },
+    fetchImpl,
+    {
+      onToken(token) {
+        streamed.push(token);
+      },
+    },
+  );
+
+  assert.equal(message, "feat: add streaming");
+  assert.deepEqual(streamed, ["feat: ", "add streaming"]);
 });

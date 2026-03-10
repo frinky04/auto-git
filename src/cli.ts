@@ -182,6 +182,7 @@ async function runCommitFlow(options: {
   const repoRoot = options.gitClient.resolveRepoRoot(options.cwd);
   const config = requireApiKey(options.config);
   options.output?.info(`Generating commit message with model: ${options.model}`);
+  options.output?.info("Streaming commit message:");
 
   const request: OpenRouterRequest = {
     model: options.model,
@@ -191,13 +192,24 @@ async function runCommitFlow(options: {
     reasoningMode: options.reasoningMode,
   };
 
+  let streamedAny = false;
   const message = await generateCommitMessageWithFallback(
     config,
     request,
     options.fetchImpl,
     options.commitMessageGenerator,
     options.output,
+    {
+      onToken(token) {
+        streamedAny = true;
+        options.output?.stream?.(token);
+      },
+    },
   );
+
+  if (streamedAny) {
+    options.output?.endStream?.();
+  }
 
   options.output?.info("Proposed commit message:");
   options.output?.info("");
@@ -256,9 +268,12 @@ async function generateCommitMessageWithFallback(
   fetchImpl: typeof fetch,
   commitMessageGenerator: NonNullable<CommandDependencies["generateCommitMessage"]>,
   output: CommandDependencies["output"],
+  generatorOptions?: {
+    onToken?: (token: string) => void;
+  },
 ): Promise<string> {
   try {
-    return await commitMessageGenerator(config, request, fetchImpl);
+    return await commitMessageGenerator(config, request, fetchImpl, generatorOptions);
   } catch (error) {
     if (!(error instanceof UserError)) {
       throw error;
@@ -279,6 +294,7 @@ async function generateCommitMessageWithFallback(
         reasoningMode: "auto",
       },
       fetchImpl,
+      generatorOptions,
     );
   }
 }
