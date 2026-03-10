@@ -2,9 +2,10 @@ import { helpText, parseArgs } from "./args.ts";
 import { loadConfig, requireApiKey } from "./config.ts";
 import { UserError } from "./errors.ts";
 import { gitClient as defaultGitClient } from "./git.ts";
+import { runGitignoreFlow } from "./gitignore.ts";
 import { generateCommitMessage } from "./openrouter.ts";
 import { createConsoleOutput, createConsolePrompt } from "./output.ts";
-import type { AppConfig, CommandDependencies } from "./types.ts";
+import type { AppConfig, CommandDependencies, OpenRouterRequest, ReasoningMode } from "./types.ts";
 
 export async function runCli(
   argv: string[],
@@ -25,6 +26,16 @@ export async function runCli(
       return 0;
     }
 
+    if (parsed.name === "gitignore") {
+      await runGitignoreFlow({
+        cwd,
+        output,
+        prompt,
+        autoConfirm: Boolean(parsed.flags.yes),
+      });
+      return 0;
+    }
+
     gitClient.ensureGitAvailable(cwd);
     const config = loadConfig(cwd, env);
 
@@ -35,6 +46,7 @@ export async function runCli(
           cwd,
           config,
           model,
+          reasoningMode: resolveReasoningMode(config.reasoningMode, parsed.flags),
           output,
           prompt,
           fetchImpl,
@@ -59,6 +71,7 @@ export async function runCli(
           cwd,
           config,
           model,
+          reasoningMode: resolveReasoningMode(config.reasoningMode, parsed.flags),
           output,
           prompt,
           fetchImpl,
@@ -100,6 +113,7 @@ async function runCommitFlow(options: {
   cwd: string;
   config: AppConfig;
   model: string;
+  reasoningMode: ReasoningMode;
   output: CommandDependencies["output"];
   prompt: NonNullable<CommandDependencies["prompt"]>;
   fetchImpl: typeof fetch;
@@ -144,15 +158,20 @@ async function runCommitFlow(options: {
   const config = requireApiKey(options.config);
   options.output?.info(`Generating commit message with model: ${options.model}`);
 
-  const message = await options.commitMessageGenerator(
+  const request: OpenRouterRequest = {
+    model: options.model,
+    systemPrompt: config.systemPrompt,
+    diff,
+    repoRoot,
+    reasoningMode: options.reasoningMode,
+  };
+
+  const message = await generateCommitMessageWithFallback(
     config,
-    {
-      model: options.model,
-      systemPrompt: config.systemPrompt,
-      diff,
-      repoRoot,
-    },
+    request,
     options.fetchImpl,
+    options.commitMessageGenerator,
+    options.output,
   );
 
   options.output?.info("Proposed commit message:");
@@ -177,4 +196,56 @@ function getStringFlag(value: string | boolean | undefined, fallback: string): s
 
 function getOptionalStringFlag(value: string | boolean | undefined): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function resolveReasoningMode(
+  configReasoningMode: ReasoningMode,
+  flags: Record<string, string | boolean>,
+): ReasoningMode {
+  if (flags["no-reasoning"]) {
+    return "off";
+  }
+
+  if (flags.reasoning) {
+    return "on";
+  }
+
+  return configReasoningMode;
+}
+
+async function generateCommitMessageWithFallback(
+  config: AppConfig & { apiKey: string },
+  request: OpenRouterRequest,
+  fetchImpl: typeof fetch,
+  commitMessageGenerator: NonNullable<CommandDependencies["generateCommitMessage"]>,
+  output: CommandDependencies["output"],
+): Promise<string> {
+  try {
+    return await commitMessageGenerator(config, request, fetchImpl);
+  } catch (error) {
+    if (!(error instanceof UserError)) {
+      throw error;
+    }
+
+    if (request.reasoningMode !== "off" || !isMandatoryReasoningError(error.message)) {
+      throw error;
+    }
+
+    output?.info(
+      "Reasoning cannot be disabled for this model/provider. Retrying with provider-default reasoning.",
+    );
+
+    return commitMessageGenerator(
+      config,
+      {
+        ...request,
+        reasoningMode: "auto",
+      },
+      fetchImpl,
+    );
+  }
+}
+
+function isMandatoryReasoningError(message: string): boolean {
+  return /reasoning is mandatory.*cannot be disabled/i.test(message);
 }

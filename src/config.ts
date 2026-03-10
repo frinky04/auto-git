@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 
 import { UserError } from "./errors.ts";
-import type { AppConfig } from "./types.ts";
+import type { AppConfig, ReasoningMode } from "./types.ts";
 
 type PartialConfig = Partial<AppConfig>;
 
@@ -23,6 +23,7 @@ export function loadConfig(cwd: string, env: NodeJS.ProcessEnv): AppConfig {
       env.AUTOGIT_SYSTEM_PROMPT ?? fileConfig.systemPrompt ?? DEFAULT_SYSTEM_PROMPT,
     defaultBaseBranch:
       env.AUTOGIT_DEFAULT_BASE_BRANCH ?? fileConfig.defaultBaseBranch,
+    reasoningMode: parseReasoningMode(env.AUTOGIT_REASONING) ?? fileConfig.reasoningMode ?? "auto",
   };
 }
 
@@ -66,6 +67,8 @@ function normalizeConfig(value: unknown, sourcePath: string): PartialConfig {
   copyString(config, normalized, "baseUrl");
   copyString(config, normalized, "systemPrompt");
   copyString(config, normalized, "defaultBaseBranch");
+  copyReasoningMode(config, normalized, "reasoningMode");
+  copyLegacyReasoningEnabled(config, normalized);
 
   return normalized;
 }
@@ -86,6 +89,73 @@ function copyString(
   }
 
   target[key] = value;
+}
+
+function copyReasoningMode(
+  source: Record<string, unknown>,
+  target: PartialConfig,
+  key: "reasoningMode",
+): void {
+  const value = source[key];
+
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "string" || !isReasoningMode(value)) {
+    throw new UserError(`Config field "${key}" must be one of: auto, on, off.`);
+  }
+
+  target[key] = value;
+}
+
+function copyLegacyReasoningEnabled(
+  source: Record<string, unknown>,
+  target: PartialConfig,
+): void {
+  if (target.reasoningMode !== undefined) {
+    return;
+  }
+
+  const value = source.reasoningEnabled;
+
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "boolean") {
+    throw new UserError('Config field "reasoningEnabled" must be a boolean.');
+  }
+
+  target.reasoningMode = value ? "on" : "off";
+}
+
+function parseReasoningMode(value: string | undefined): ReasoningMode | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  if (normalized === "auto") {
+    return "auto";
+  }
+
+  if (/^(1|true|yes|on|enabled)$/i.test(normalized)) {
+    return "on";
+  }
+
+  if (/^(0|false|no|off|disabled|none)$/i.test(normalized)) {
+    return "off";
+  }
+
+  throw new UserError(
+    "AUTOGIT_REASONING must be one of: auto, on, off, true, false, 1, 0, yes, no.",
+  );
+}
+
+function isReasoningMode(value: string): value is ReasoningMode {
+  return value === "auto" || value === "on" || value === "off";
 }
 
 export function requireApiKey(config: AppConfig): AppConfig & { apiKey: string } {

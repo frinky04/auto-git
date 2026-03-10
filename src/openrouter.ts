@@ -6,6 +6,22 @@ export async function generateCommitMessage(
   request: OpenRouterRequest,
   fetchImpl: typeof fetch,
 ): Promise<string> {
+  const body = {
+    model: request.model,
+    messages: [
+      {
+        role: "system",
+        content: request.systemPrompt,
+      },
+      {
+        role: "user",
+        content: buildUserPrompt(request.diff, request.repoRoot),
+      },
+    ],
+    temperature: 0.2,
+    ...(buildReasoningBody(request.reasoningMode) ?? {}),
+  };
+
   const response = await fetchImpl(`${trimTrailingSlash(config.baseUrl)}/chat/completions`, {
     method: "POST",
     headers: {
@@ -14,20 +30,7 @@ export async function generateCommitMessage(
       "HTTP-Referer": "https://github.com/",
       "X-Title": "autogit",
     },
-    body: JSON.stringify({
-      model: request.model,
-      messages: [
-        {
-          role: "system",
-          content: request.systemPrompt,
-        },
-        {
-          role: "user",
-          content: buildUserPrompt(request.diff, request.repoRoot),
-        },
-      ],
-      temperature: 0.2,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -115,4 +118,18 @@ function flattenMessageContent(
 
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function buildReasoningBody(mode: OpenRouterRequest["reasoningMode"]):
+  | { reasoning: { enabled: true } | { effort: "none" } }
+  | undefined {
+  if (mode === "on") {
+    return { reasoning: { enabled: true } };
+  }
+
+  if (mode === "off") {
+    return { reasoning: { effort: "none" } };
+  }
+
+  return undefined;
 }

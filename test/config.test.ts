@@ -25,3 +25,29 @@ test("loadConfig prefers environment variables over config file", () => {
   assert.equal(config.apiKey, "env-key");
   assert.equal(config.model, "env-model");
 });
+
+test("loadConfig defaults reasoning to auto", () => {
+  const config = loadConfig(process.cwd(), {
+    OPENROUTER_API_KEY: "env-key",
+  });
+
+  assert.equal(config.reasoningMode, "auto");
+});
+
+test("loadConfig enables reasoning from environment", () => {
+  const config = loadConfig(process.cwd(), {
+    OPENROUTER_API_KEY: "env-key",
+    AUTOGIT_REASONING: "true",
+  });
+
+  assert.equal(config.reasoningMode, "on");
+});
+
+test("loadConfig disables reasoning from environment", () => {
+  const config = loadConfig(process.cwd(), {
+    OPENROUTER_API_KEY: "env-key",
+    AUTOGIT_REASONING: "off",
+  });
+
+  assert.equal(config.reasoningMode, "off");
+});

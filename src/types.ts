@@ -18,10 +18,12 @@ export type CommandDependencies = {
 };
 
 export type ParsedCommand = {
-  name: "commit" | "push" | "pr" | "branch-commit" | "help";
+  name: "commit" | "push" | "pr" | "branch-commit" | "gitignore" | "help";
   flags: Record<string, string | boolean>;
   positionals: string[];
 };
+
+export type ReasoningMode = "auto" | "on" | "off";
 
 export type AppConfig = {
   apiKey?: string;
@@ -29,6 +31,7 @@ export type AppConfig = {
   baseUrl: string;
   systemPrompt: string;
   defaultBaseBranch?: string;
+  reasoningMode: ReasoningMode;
 };
 
 export type OpenRouterRequest = {
@@ -36,6 +39,7 @@ export type OpenRouterRequest = {
   systemPrompt: string;
   diff: string;
   repoRoot: string;
+  reasoningMode: ReasoningMode;
 };
 
 export type GitClient = {

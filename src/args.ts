@@ -1,7 +1,7 @@
 import { UserError } from "./errors.ts";
 import type { ParsedCommand } from "./types.ts";
 
-const COMMANDS = new Set(["commit", "push", "pr", "branch-commit", "help"]);
+const COMMANDS = new Set(["commit", "push", "pr", "branch-commit", "gitignore", "help"]);
 
 export function parseArgs(argv: string[]): ParsedCommand {
   const [maybeCommand, ...rest] = argv;
@@ -25,7 +25,12 @@ export function parseArgs(argv: string[]): ParsedCommand {
       continue;
     }
 
-    if (token === "--yes" || token === "--all") {
+    if (
+      token === "--yes" ||
+      token === "--all" ||
+      token === "--reasoning" ||
+      token === "--no-reasoning"
+    ) {
       flags[token.slice(2)] = true;
       continue;
     }
@@ -55,10 +60,11 @@ export function helpText(): string {
   return `autogit
 
 Usage:
-  autogit commit [--model <id>] [--yes] [--all]
+  autogit commit [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
   autogit push
   autogit pr [--base <branch>] [--title <title>] [--body <body>]
-  autogit branch-commit <branch> [--model <id>] [--yes] [--all]
+  autogit branch-commit <branch> [--model <id>] [--yes] [--all] [--reasoning] [--no-reasoning]
+  autogit gitignore [--yes]
 
 Config:
   OPENROUTER_API_KEY            Required unless apiKey is set in config
@@ -66,6 +72,7 @@ Config:
   OPENROUTER_BASE_URL           Overrides the OpenRouter API base URL
   AUTOGIT_SYSTEM_PROMPT         Overrides the commit generation prompt
   AUTOGIT_DEFAULT_BASE_BRANCH   Default PR base branch
+  AUTOGIT_REASONING             Reasoning mode: auto, on, or off
   AUTOGIT_CONFIG                Path to a JSON config file
 
 Config file locations:
