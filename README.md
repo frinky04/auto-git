@@ -42,7 +42,7 @@ Example config:
 
 ```json
 {
-  "model": "stepfun/step-3.5-flash",
+  "model": "qwen/qwen3-235b-a22b-2507",
   "defaultBaseBranch": "main",
   "reasoningMode": "auto"
 }
