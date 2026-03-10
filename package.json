@@ -1,0 +1,21 @@
+{
+  "name": "autogit",
+  "version": "0.1.0",
+  "description": "CLI for AI-assisted git commits, pushes, and pull requests using OpenRouter.",
+  "type": "module",
+  "bin": {
+    "autogit": "./bin/autogit.js"
+  },
+  "scripts": {
+    "start": "node ./bin/autogit.js",
+    "test": "node --experimental-strip-types --test",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "typescript": "^5.9.3"
+  }
+}
