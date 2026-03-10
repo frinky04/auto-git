@@ -739,6 +739,83 @@ test("runCli guide skips PR prompt on main branch", async () => {
   assert.deepEqual(prs, []);
 });
 
+test("runCli commit can commit on a new branch from the action prompt", async () => {
+  const commits: string[] = [];
+  const switchedBranches: string[] = [];
+
+  const exitCode = await runCli(["commit"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: {
+      info() {},
+      error() {},
+    },
+    prompt: {
+      async confirm() {
+        return true;
+      },
+      async chooseCommitAction() {
+        return "branch";
+      },
+      async editMessage(message) {
+        return message;
+      },
+      async input(message: string) {
+        if (message.includes("New branch name")) {
+          return "feature/new-branch";
+        }
+
+        return "";
+      },
+    },
+    gitClient: {
+      ensureGitAvailable() {},
+      resolveRepoRoot() {
+        return "/repo";
+      },
+      getCurrentBranch() {
+        return "main";
+      },
+      getStagedFiles() {
+        return ["file.txt"];
+      },
+      getStatusSummary() {
+        return makeStatusSummary();
+      },
+      getStagedDiff() {
+        return "diff --git a/file.txt b/file.txt";
+      },
+      hasWorkingTreeChanges() {
+        return true;
+      },
+      stageAllChanges() {},
+      commitWithMessage(_, message) {
+        commits.push(message);
+      },
+      switchToNewBranch(_, branchName) {
+        switchedBranches.push(branchName);
+      },
+      pushCurrentBranch() {
+        return "feature/new-branch";
+      },
+      createPullRequest() {},
+      publishRepository() {
+        return "repo";
+      },
+    },
+    async generateCommitMessage() {
+      return "feat: branch commit";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(switchedBranches, ["feature/new-branch"]);
+  assert.deepEqual(commits, ["feat: branch commit"]);
+});
+
 test("runCli push sets upstream when missing", async () => {
   const output: string[] = [];
   const exitCode = await runCli(["push"], {

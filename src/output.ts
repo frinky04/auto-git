@@ -133,6 +133,7 @@ export function createConsolePrompt(): PromptHandler {
       const actionMap: Record<string, CommitAction> = {
         "": "commit",
         p: "push",
+        b: "branch",
         e: "edit",
         r: "regenerate",
         c: "cancel",

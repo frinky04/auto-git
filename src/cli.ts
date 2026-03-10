@@ -307,6 +307,17 @@ async function runCommitFlow(options: {
       continue;
     }
 
+    if (action === "branch") {
+      const nextBranchName = await requestBranchName(options.prompt);
+      options.gitClient.switchToNewBranch(options.cwd, nextBranchName);
+      if (options.output?.success) {
+        options.output.success(`Switched to new branch: ${nextBranchName}`);
+      } else {
+        options.output?.info(`Switched to new branch: ${nextBranchName}`);
+      }
+      return applyCommitAction("commit", options, message);
+    }
+
     if (action === "edit") {
       const edited = await editCommitMessage(options.prompt, message);
       if (!edited) {
@@ -321,6 +332,16 @@ async function runCommitFlow(options: {
       if (followUpAction === "regenerate") {
         regenerateFeedback = await requestRegenerateFeedback(options.prompt);
         continue;
+      }
+      if (followUpAction === "branch") {
+        const nextBranchName = await requestBranchName(options.prompt);
+        options.gitClient.switchToNewBranch(options.cwd, nextBranchName);
+        if (options.output?.success) {
+          options.output.success(`Switched to new branch: ${nextBranchName}`);
+        } else {
+          options.output?.info(`Switched to new branch: ${nextBranchName}`);
+        }
+        return applyCommitAction("commit", options, message);
       }
       return applyCommitAction(followUpAction, options, message);
     }
@@ -559,12 +580,13 @@ function renderCommitActions(output: CommandDependencies["output"]): void {
     output.actionLine([
       { key: "Enter", label: "Commit" },
       { key: "p", label: "Commit & Push" },
+      { key: "b", label: "New Branch" },
       { key: "e", label: "Edit" },
       { key: "r", label: "Regenerate" },
       { key: "c", label: "Cancel" },
     ]);
   } else {
-    output?.info("[Enter] commit  [p] commit & push  [e] edit  [r] regenerate  [c] cancel");
+    output?.info("[Enter] commit  [p] commit & push  [b] new branch  [e] edit  [r] regenerate  [c] cancel");
   }
 }
 
@@ -588,6 +610,21 @@ async function requestRegenerateFeedback(
 
   const value = (await prompt.input("Feedback for regeneration (optional): ")).trim();
   return value || undefined;
+}
+
+async function requestBranchName(
+  prompt: NonNullable<CommandDependencies["prompt"]>,
+): Promise<string> {
+  if (!prompt.input) {
+    throw new UserError("Branch creation requires interactive input support.");
+  }
+
+  const value = (await prompt.input("New branch name: ")).trim();
+  if (!value) {
+    throw new UserError("Branch name is required.");
+  }
+
+  return value;
 }
 
 async function applyCommitAction(

@@ -13,7 +13,7 @@ export type OutputWriter = {
   warn?(message: string): void;
 };
 
-export type CommitAction = "commit" | "push" | "edit" | "regenerate" | "cancel";
+export type CommitAction = "commit" | "push" | "branch" | "edit" | "regenerate" | "cancel";
 
 export type PromptHandler = {
   confirm(message: string): Promise<boolean>;
