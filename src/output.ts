@@ -1,7 +1,7 @@
 import readline from "node:readline/promises";
 import { stdin, stdout, stderr } from "node:process";
 
-import type { CommitAction, OutputWriter, PromptHandler } from "./types.ts";
+import type { CommitAction, ConfirmOptions, OutputWriter, PromptHandler } from "./types.ts";
 
 export function createConsoleOutput(): OutputWriter {
   const spinnerFrames = ["-", "\\", "|", "/"];
@@ -122,9 +122,16 @@ export function createConsoleOutput(): OutputWriter {
 
 export function createConsolePrompt(): PromptHandler {
   return {
-    async confirm(message: string) {
-      const answer = (await askLine(`${message} [Y/n] `)).trim();
-      return answer === "" || /^y(es)?$/i.test(answer);
+    async confirm(message: string, options?: ConfirmOptions) {
+      const defaultValue = options?.defaultValue ?? true;
+      const suffix = defaultValue ? "[Y/n]" : "[y/N]";
+      const answer = (await askLine(`${message} ${suffix} `)).trim();
+
+      if (answer === "") {
+        return defaultValue;
+      }
+
+      return /^y(es)?$/i.test(answer);
     },
     async chooseCommitAction(message: string) {
       const promptText = message.trim().length > 0 ? `${message} ` : "> ";

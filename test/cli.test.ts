@@ -358,6 +358,7 @@ test("runCli commit offers PR after push on a feature branch", async () => {
   const commits: string[] = [];
   const pushes: string[] = [];
   const prs: Array<{ base?: string }> = [];
+  const prPromptDefaults: boolean[] = [];
   const { messages, output } = makeMessageOutput();
 
   const exitCode = await runCli(["commit"], {
@@ -368,8 +369,9 @@ test("runCli commit offers PR after push on a feature branch", async () => {
     },
     output,
     prompt: {
-      async confirm(message: string) {
+      async confirm(message: string, options?: { defaultValue?: boolean }) {
         if (message.includes("Create a pull request?")) {
+          prPromptDefaults.push(options?.defaultValue ?? true);
           return true;
         }
         return true;
@@ -396,6 +398,7 @@ test("runCli commit offers PR after push on a feature branch", async () => {
   assert.deepEqual(commits, ["feat: new feature"]);
   assert.deepEqual(pushes, ["feature/my-feature"]);
   assert.deepEqual(prs, [{ base: undefined }]);
+  assert.deepEqual(prPromptDefaults, [false]);
   assert.ok(messages.some((message) => message.includes("Pull request created via gh.")));
 });
 

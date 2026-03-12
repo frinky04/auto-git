@@ -238,7 +238,7 @@ async function offerPullRequest(ctx: CliContext, config: AppConfig): Promise<voi
     return;
   }
 
-  const wantsPr = await ctx.prompt.confirm("Create a pull request?");
+  const wantsPr = await ctx.prompt.confirm("Create a pull request?", { defaultValue: false });
   if (!wantsPr) {
     return;
   }

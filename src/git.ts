@@ -14,7 +14,13 @@ export function resolveRepoRoot(cwd: string): string {
 }
 
 export function getCurrentBranch(cwd: string): string {
-  return runCommand("git", ["rev-parse", "--abbrev-ref", "HEAD"], cwd).stdout.trim();
+  const branchName = runCommand("git", ["branch", "--show-current"], cwd).stdout.trim();
+  if (branchName) {
+    return branchName;
+  }
+
+  // Detached HEAD: return short commit id.
+  return runCommand("git", ["rev-parse", "--short", "HEAD"], cwd).stdout.trim();
 }
 
 export function getStagedFiles(cwd: string): string[] {

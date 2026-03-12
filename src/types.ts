@@ -15,8 +15,12 @@ export type OutputWriter = {
 
 export type CommitAction = "commit" | "push" | "branch" | "edit" | "regenerate" | "cancel";
 
+export type ConfirmOptions = {
+  defaultValue?: boolean;
+};
+
 export type PromptHandler = {
-  confirm(message: string): Promise<boolean>;
+  confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
   chooseCommitAction?(message: string): Promise<CommitAction>;
   editMessage?(message: string): Promise<string | null>;
   input?(message: string): Promise<string>;
