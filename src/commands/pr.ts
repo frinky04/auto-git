@@ -2,8 +2,8 @@ import { requireApiKey } from "../config.ts";
 import { UserError } from "../errors.ts";
 import { generatePullRequestDraftWithFallback } from "../openrouter.ts";
 import { emitSuccess, emitWarn } from "../output.ts";
-import { renderCommandHeader, renderPrActions, renderPullRequestDraft } from "../render.ts";
-import type { AppConfig, CliContext, PrAction, PullRequestDraftRequest, ReasoningMode } from "../types.ts";
+import { renderCommandHeader, renderPrActions, renderPullRequestDraft, renderTokenUsage } from "../render.ts";
+import type { AppConfig, CliContext, PrAction, PullRequestDraftRequest, ReasoningMode, TokenUsage } from "../types.ts";
 
 const DEFAULT_PR_SYSTEM_PROMPT =
   "You write clear, reviewer-friendly GitHub pull request drafts. Return strict JSON with keys title and body only. The body should be concise markdown with practical context and test notes.";
@@ -69,6 +69,7 @@ export async function runPrFlow(
 
   while (true) {
     ctx.output.startSpinner("Generating PR draft");
+    let tokenUsage: TokenUsage | undefined;
 
     const request: PullRequestDraftRequest = {
       model: options.model,
@@ -88,10 +89,16 @@ export async function runPrFlow(
       ctx.fetchImpl,
       ctx.generatePullRequestDraft,
       ctx.output,
+      {
+        onUsage(usage) {
+          tokenUsage = usage;
+        },
+      },
     );
 
     ctx.output.stopSpinner();
     renderPullRequestDraft(ctx.output, draft);
+    renderTokenUsage(ctx.output, tokenUsage);
 
     if (options.autoConfirm) {
       ctx.git.createPullRequest(ctx.cwd, {

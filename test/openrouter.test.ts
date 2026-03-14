@@ -15,6 +15,7 @@ test("sanitizeCommitMessage preserves subject and body", () => {
 
 test("generateCommitMessage omits reasoning in auto mode", async () => {
   let body: Record<string, unknown> | undefined;
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
 
   const fetchImpl: typeof fetch = async (_, init) => {
     body = JSON.parse(String(init?.body));
@@ -22,6 +23,11 @@ test("generateCommitMessage omits reasoning in auto mode", async () => {
     return new Response(
       JSON.stringify({
         choices: [{ message: { content: "feat: disable reasoning" } }],
+        usage: {
+          prompt_tokens: 10,
+          completion_tokens: 4,
+          total_tokens: 14,
+        },
       }),
       {
         status: 200,
@@ -46,11 +52,21 @@ test("generateCommitMessage omits reasoning in auto mode", async () => {
       reasoningMode: "auto",
     },
     fetchImpl,
+    {
+      onUsage(value) {
+        usage = value;
+      },
+    },
   );
 
   assert.equal(message, "feat: disable reasoning");
   assert.equal(body?.stream, true);
   assert.equal(body?.reasoning, undefined);
+  assert.deepEqual(usage, {
+    promptTokens: 10,
+    completionTokens: 4,
+    totalTokens: 14,
+  });
 });
 
 test("generateCommitMessage enables reasoning when requested", async () => {
@@ -135,6 +151,7 @@ test("generateCommitMessage disables reasoning when requested", async () => {
 
 test("generateCommitMessage streams token chunks from SSE", async () => {
   const streamed: string[] = [];
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -144,6 +161,7 @@ test("generateCommitMessage streams token chunks from SSE", async () => {
             ": OPENROUTER PROCESSING\n\n",
             'data: {"choices":[{"delta":{"content":"feat: "}}]}\n\n',
             'data: {"choices":[{"delta":{"content":"add streaming"}}]}\n\n',
+            'data: {"usage":{"prompt_tokens":42,"completion_tokens":5,"total_tokens":47}}\n\n',
             "data: [DONE]\n\n",
           ].join(""),
         ),
@@ -178,11 +196,19 @@ test("generateCommitMessage streams token chunks from SSE", async () => {
       onToken(token) {
         streamed.push(token);
       },
+      onUsage(value) {
+        usage = value;
+      },
     },
   );
 
   assert.equal(message, "feat: add streaming");
   assert.deepEqual(streamed, ["feat: ", "add streaming"]);
+  assert.deepEqual(usage, {
+    promptTokens: 42,
+    completionTokens: 5,
+    totalTokens: 47,
+  });
 });
 
 test("generateCommitMessage includes regenerate feedback in the prompt", async () => {
@@ -226,10 +252,17 @@ test("generateCommitMessage includes regenerate feedback in the prompt", async (
 });
 
 test("generatePullRequestDraft parses JSON title and body", async () => {
+  let usage: { promptTokens: number; completionTokens: number; totalTokens: number } | undefined;
+
   const fetchImpl: typeof fetch = async () =>
     new Response(
       JSON.stringify({
         choices: [{ message: { content: '{"title":"feat: add PR flow","body":"## Summary\\n- add flow"}' } }],
+        usage: {
+          prompt_tokens: 55,
+          completion_tokens: 21,
+          total_tokens: 76,
+        },
       }),
       {
         status: 200,
@@ -256,11 +289,21 @@ test("generatePullRequestDraft parses JSON title and body", async () => {
       reasoningMode: "auto",
     },
     fetchImpl,
+    {
+      onUsage(value) {
+        usage = value;
+      },
+    },
   );
 
   assert.deepEqual(draft, {
     title: "feat: add PR flow",
     body: "## Summary\n- add flow",
+  });
+  assert.deepEqual(usage, {
+    promptTokens: 55,
+    completionTokens: 21,
+    totalTokens: 76,
   });
 });
 

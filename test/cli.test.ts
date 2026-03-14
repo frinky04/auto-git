@@ -111,6 +111,11 @@ test("runCli commit creates a commit from staged changes", async () => {
     async generateCommitMessage(_, __, ___, options) {
       options?.onToken?.("feat: ");
       options?.onToken?.("add hello file");
+      options?.onUsage?.({
+        promptTokens: 120,
+        completionTokens: 8,
+        totalTokens: 128,
+      });
       return "feat: add hello file";
     },
   });
@@ -124,6 +129,8 @@ test("runCli commit creates a commit from staged changes", async () => {
   assert.ok(messages.some((message) => message.includes("AutoGit")));
   assert.ok(messages.some((message) => message.includes("main")));
   assert.ok(messages.some((message) => message.includes("Suggested commit message")));
+  assert.ok(messages.some((message) => message.includes("Token usage")));
+  assert.ok(messages.some((message) => message.includes("Total: 128")));
   assert.ok(messages.some((message) => message.includes("Committed changes.")));
 });
 
@@ -511,6 +518,7 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
   const pushes: string[] = [];
   const prs: Array<{ base?: string; title?: string; body?: string }> = [];
   const requests: string[] = [];
+  const { messages, output } = makeMessageOutput();
 
   const exitCode = await runCli(["pr"], {
     cwd: "/repo",
@@ -518,7 +526,7 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
       ...process.env,
       OPENROUTER_API_KEY: "test-key",
     },
-    output: makeOutput(),
+    output,
     prompt: {
       async confirm() {
         return true;
@@ -532,8 +540,13 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
       pushCurrentBranch() { pushes.push("feature/new-pr-flow"); return "feature/new-pr-flow"; },
       createPullRequest(_, options) { prs.push(options); },
     }),
-    async generatePullRequestDraft(_, request) {
+    async generatePullRequestDraft(_, request, __, options) {
       requests.push(request.baseBranch);
+      options?.onUsage?.({
+        promptTokens: 90,
+        completionTokens: 30,
+        totalTokens: 120,
+      });
       return {
         title: "feat: improve PR automation flow",
         body: "## Summary\n- Improve generated pull request metadata.\n\n## Testing\n- npm test",
@@ -549,6 +562,8 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
     title: "feat: improve PR automation flow",
     body: "## Summary\n- Improve generated pull request metadata.\n\n## Testing\n- npm test",
   }]);
+  assert.ok(messages.some((message) => message.includes("Token usage")));
+  assert.ok(messages.some((message) => message.includes("Total: 120")));
 });
 
 test("runCli pr supports regeneration with feedback", async () => {

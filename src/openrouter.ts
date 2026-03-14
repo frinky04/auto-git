@@ -7,6 +7,7 @@ import type {
   PullRequestDraft,
   PullRequestDraftGenerator,
   PullRequestDraftRequest,
+  TokenUsage,
 } from "./types.ts";
 import { emitWarn } from "./output.ts";
 
@@ -16,6 +17,7 @@ export async function generateCommitMessage(
   fetchImpl: typeof fetch,
   options: {
     onToken?: (token: string) => void;
+    onUsage?: (usage: TokenUsage) => void;
   } = {},
 ): Promise<string> {
   const body = {
@@ -32,6 +34,7 @@ export async function generateCommitMessage(
     ],
     temperature: 0.2,
     stream: true,
+    stream_options: { include_usage: true },
     ...(buildReasoningBody(request.reasoningMode) ?? {}),
   };
 
@@ -53,20 +56,34 @@ export async function generateCommitMessage(
 
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("text/event-stream")) {
-    return parseStreamingResponseText(
+    const result = await parseStreamingResponseText(
       response,
       "OpenRouter returned an empty commit message.",
       options.onToken,
     );
+    if (result.usage) {
+      options.onUsage?.(result.usage);
+    }
+    return result.text;
   }
 
-  return parseJsonResponseText(response, "OpenRouter returned an empty commit message.");
+  const result = await parseJsonResponseText(
+    response,
+    "OpenRouter returned an empty commit message.",
+  );
+  if (result.usage) {
+    options.onUsage?.(result.usage);
+  }
+  return result.text;
 }
 
 export async function generatePullRequestDraft(
   config: AppConfig,
   request: PullRequestDraftRequest,
   fetchImpl: typeof fetch,
+  options: {
+    onUsage?: (usage: TokenUsage) => void;
+  } = {},
 ): Promise<PullRequestDraft> {
   const body = {
     model: request.model,
@@ -102,18 +119,26 @@ export async function generatePullRequestDraft(
   }
 
   const contentType = response.headers.get("content-type") ?? "";
-  const text = contentType.includes("text/event-stream")
+  const result = contentType.includes("text/event-stream")
     ? await parseStreamingResponseText(response, "OpenRouter returned an empty PR draft.")
     : await parseJsonResponseText(response, "OpenRouter returned an empty PR draft.");
+  if (result.usage) {
+    options.onUsage?.(result.usage);
+  }
 
-  return parsePullRequestDraft(text);
+  return parsePullRequestDraft(result.text);
 }
 
 async function parseJsonResponseText(
   response: Response,
   emptyErrorMessage: string,
-): Promise<string> {
+): Promise<{ text: string; usage?: TokenUsage }> {
   const json = (await response.json()) as {
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
     choices?: Array<{
       message?: {
         content?: string | Array<{ type?: string; text?: string }>;
@@ -129,14 +154,17 @@ async function parseJsonResponseText(
     throw new UserError(emptyErrorMessage);
   }
 
-  return sanitized;
+  return {
+    text: sanitized,
+    usage: normalizeTokenUsage(json.usage),
+  };
 }
 
 async function parseStreamingResponseText(
   response: Response,
   emptyErrorMessage: string,
   onToken?: (token: string) => void,
-): Promise<string> {
+): Promise<{ text: string; usage?: TokenUsage }> {
   if (!response.body) {
     throw new UserError("OpenRouter returned an empty streaming response body.");
   }
@@ -145,6 +173,7 @@ async function parseStreamingResponseText(
   const decoder = new TextDecoder();
   let buffer = "";
   let combined = "";
+  let usage: TokenUsage | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -160,10 +189,13 @@ async function parseStreamingResponseText(
       const rawEvent = buffer.slice(0, boundaryIndex);
       buffer = buffer.slice(boundaryIndex + 2);
 
-      const token = parseSseEvent(rawEvent);
-      if (token) {
-        combined += token;
-        onToken?.(token);
+      const event = parseSseEvent(rawEvent);
+      if (event.usage) {
+        usage = event.usage;
+      }
+      if (event.token) {
+        combined += event.token;
+        onToken?.(event.token);
       }
 
       boundaryIndex = buffer.indexOf("\n\n");
@@ -171,10 +203,13 @@ async function parseStreamingResponseText(
   }
 
   buffer += decoder.decode();
-  const trailingToken = parseSseEvent(buffer);
-  if (trailingToken) {
-    combined += trailingToken;
-    onToken?.(trailingToken);
+  const trailingEvent = parseSseEvent(buffer);
+  if (trailingEvent.usage) {
+    usage = trailingEvent.usage;
+  }
+  if (trailingEvent.token) {
+    combined += trailingEvent.token;
+    onToken?.(trailingEvent.token);
   }
 
   const sanitized = sanitizeCommitMessage(combined);
@@ -182,7 +217,10 @@ async function parseStreamingResponseText(
     throw new UserError(emptyErrorMessage);
   }
 
-  return sanitized;
+  return {
+    text: sanitized,
+    usage,
+  };
 }
 
 export function sanitizeCommitMessage(message: string): string {
@@ -351,10 +389,10 @@ function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-function parseSseEvent(rawEvent: string): string {
+function parseSseEvent(rawEvent: string): { token: string; usage?: TokenUsage } {
   const trimmed = rawEvent.trim();
   if (!trimmed) {
-    return "";
+    return { token: "" };
   }
 
   const dataLines = trimmed
@@ -364,16 +402,21 @@ function parseSseEvent(rawEvent: string): string {
     .map((line) => line.slice(5).trim());
 
   if (dataLines.length === 0) {
-    return "";
+    return { token: "" };
   }
 
   const payload = dataLines.join("\n");
   if (payload === "[DONE]") {
-    return "";
+    return { token: "" };
   }
 
   let parsed: {
     error?: { message?: string };
+    usage?: {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    };
     choices?: Array<{
       delta?: {
         content?:
@@ -390,7 +433,7 @@ function parseSseEvent(rawEvent: string): string {
   try {
     parsed = JSON.parse(payload);
   } catch {
-    return "";
+    return { token: "" };
   }
 
   if (parsed.error?.message) {
@@ -398,7 +441,10 @@ function parseSseEvent(rawEvent: string): string {
   }
 
   const choice = parsed.choices?.[0];
-  return flattenContent(choice?.delta?.content) || flattenContent(choice?.message?.content);
+  return {
+    token: flattenContent(choice?.delta?.content) || flattenContent(choice?.message?.content),
+    usage: normalizeTokenUsage(parsed.usage),
+  };
 }
 
 function buildReasoningBody(mode: OpenRouterRequest["reasoningMode"]):
@@ -421,7 +467,7 @@ export async function generateCommitMessageWithFallback(
   fetchImpl: typeof fetch,
   generator: CommitMessageGenerator,
   output: OutputWriter,
-  options?: { onToken?: (token: string) => void },
+  options?: { onToken?: (token: string) => void; onUsage?: (usage: TokenUsage) => void },
 ): Promise<string> {
   try {
     return await generator(config, request, fetchImpl, options);
@@ -454,9 +500,10 @@ export async function generatePullRequestDraftWithFallback(
   fetchImpl: typeof fetch,
   generator: PullRequestDraftGenerator,
   output: OutputWriter,
+  options?: { onUsage?: (usage: TokenUsage) => void },
 ): Promise<PullRequestDraft> {
   try {
-    return await generator(config, request, fetchImpl);
+    return await generator(config, request, fetchImpl, options);
   } catch (error) {
     if (!(error instanceof UserError)) {
       throw error;
@@ -475,10 +522,43 @@ export async function generatePullRequestDraftWithFallback(
       config,
       { ...request, reasoningMode: "auto" },
       fetchImpl,
+      options,
     );
   }
 }
 
 function isMandatoryReasoningError(message: string): boolean {
   return /reasoning is mandatory.*cannot be disabled/i.test(message);
+}
+
+function normalizeTokenUsage(
+  value:
+    | {
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+    }
+    | undefined,
+): TokenUsage | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const promptTokens = Number(value.prompt_tokens);
+  const completionTokens = Number(value.completion_tokens);
+  const totalTokens = Number(value.total_tokens);
+
+  if (
+    !Number.isFinite(promptTokens) ||
+    !Number.isFinite(completionTokens) ||
+    !Number.isFinite(totalTokens)
+  ) {
+    return undefined;
+  }
+
+  return {
+    promptTokens,
+    completionTokens,
+    totalTokens,
+  };
 }

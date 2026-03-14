@@ -21,6 +21,12 @@ export type PullRequestDraft = {
   body: string;
 };
 
+export type TokenUsage = {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+};
+
 export type ConfirmOptions = {
   defaultValue?: boolean;
 };
@@ -142,6 +148,7 @@ export type CommitMessageGenerator = (
   fetchImpl: typeof fetch,
   options?: {
     onToken?: (token: string) => void;
+    onUsage?: (usage: TokenUsage) => void;
   },
 ) => Promise<string>;
 
@@ -149,4 +156,7 @@ export type PullRequestDraftGenerator = (
   config: AppConfig & { apiKey: string },
   request: PullRequestDraftRequest,
   fetchImpl: typeof fetch,
+  options?: {
+    onUsage?: (usage: TokenUsage) => void;
+  },
 ) => Promise<PullRequestDraft>;

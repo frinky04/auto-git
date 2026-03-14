@@ -4,7 +4,7 @@
   "description": "CLI for AI-assisted git commits, pushes, and pull requests using OpenRouter.",
   "type": "module",
   "bin": {
-    "autogit": "./bin/autogit.js"
+    "autogit": "bin/autogit.js"
   },
   "scripts": {
     "start": "node ./bin/autogit.js",

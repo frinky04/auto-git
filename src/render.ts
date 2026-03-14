@@ -1,4 +1,4 @@
-import type { GitStatusSummary, OutputWriter, PullRequestDraft } from "./types.ts";
+import type { GitStatusSummary, OutputWriter, PullRequestDraft, TokenUsage } from "./types.ts";
 import { emitSuccess, emitWarn } from "./output.ts";
 
 export function renderCommandHeader(
@@ -66,4 +66,20 @@ export function renderPrActions(output: OutputWriter): void {
     { key: "r", label: "Regenerate" },
     { key: "c", label: "Cancel" },
   ]);
+}
+
+export function renderTokenUsage(output: OutputWriter, usage: TokenUsage | undefined): void {
+  if (!usage) {
+    return;
+  }
+
+  output.box(
+    "Token usage",
+    [
+      `Prompt: ${usage.promptTokens}`,
+      `Completion: ${usage.completionTokens}`,
+      `Total: ${usage.totalTokens}`,
+    ].join("\n"),
+  );
+  output.info("");
 }

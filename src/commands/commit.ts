@@ -2,8 +2,8 @@ import { requireApiKey } from "../config.ts";
 import { UserError } from "../errors.ts";
 import { generateCommitMessageWithFallback } from "../openrouter.ts";
 import { emitSuccess } from "../output.ts";
-import { renderCommandHeader, renderCommitActions, renderCommitMessage } from "../render.ts";
-import type { AppConfig, CliContext, CommitAction, OpenRouterRequest, ReasoningMode } from "../types.ts";
+import { renderCommandHeader, renderCommitActions, renderCommitMessage, renderTokenUsage } from "../render.ts";
+import type { AppConfig, CliContext, CommitAction, OpenRouterRequest, ReasoningMode, TokenUsage } from "../types.ts";
 
 export async function runCommitFlow(
   ctx: CliContext,
@@ -36,6 +36,7 @@ export async function runCommitFlow(
 
   while (true) {
     ctx.output.startSpinner("Generating commit message");
+    let tokenUsage: TokenUsage | undefined;
 
     const request: OpenRouterRequest = {
       model: options.model,
@@ -64,6 +65,9 @@ export async function runCommitFlow(
           streamedAny = true;
           ctx.output.stream(token);
         },
+        onUsage(usage) {
+          tokenUsage = usage;
+        },
       },
     );
 
@@ -75,6 +79,7 @@ export async function runCommitFlow(
     } else {
       renderCommitMessage(ctx.output, message);
     }
+    renderTokenUsage(ctx.output, tokenUsage);
 
     if (options.autoConfirm) {
       ctx.git.commitWithMessage(ctx.cwd, message);
