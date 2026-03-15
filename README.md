@@ -17,16 +17,17 @@ autogit status
 
 The main command. Generates an AI commit message from your staged diff and walks you through the rest interactively:
 
-1. If nothing is staged, offers to stage all changes (or use `--all` to skip the prompt).
-2. Sends the diff to OpenRouter and streams the suggested commit message in real time.
-3. Presents an action menu:
+1. If nothing is staged, offers to stage all changes.
+2. If staged and unstaged/untracked changes are mixed, offers to stage everything first (or use `--all` to skip this prompt).
+3. Sends the diff to OpenRouter and streams the suggested commit message in real time.
+4. Presents an action menu:
    - **Enter** — commit
    - **p** — commit and push
    - **b** — switch to a new branch, then commit
    - **e** — edit the message
    - **r** — regenerate (with optional feedback like "shorter" or "more conventional")
    - **c** — cancel
-4. If you push from a feature branch, offers to create a pull request via `gh`.
+5. If you push from a feature branch, offers to create a pull request via `gh`.
 
 Use `--yes` to skip all prompts and commit immediately. Use `--model` to override the configured model for a single run.
 

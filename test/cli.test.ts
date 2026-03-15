@@ -132,7 +132,7 @@ test("runCli commit creates a commit from staged changes", async () => {
   assert.ok(messages.some((message) => message.includes("Suggested commit message")));
   assert.ok(messages.some((message) => message.includes("Token usage")));
   assert.ok(messages.some((message) => message.includes("Total: 128")));
-  assert.ok(messages.some((message) => message.includes("Estimated cost: 0.00012999 credits")));
+  assert.ok(messages.some((message) => message.includes("Estimated cost: $0.00012999")));
   assert.ok(messages.some((message) => message.includes("Committed changes.")));
 });
 
@@ -261,6 +261,115 @@ test("runCli commit --all stages without prompting first", async () => {
   assert.equal(exitCode, 0);
   assert.deepEqual(commits, ["feat: add staged changes"]);
   assert.equal(confirmCalls, 0);
+});
+
+test("runCli commit prompts to stage all when unstaged changes exist", async () => {
+  const commits: string[] = [];
+  const prompts: string[] = [];
+  let includesUnstaged = false;
+
+  const exitCode = await runCli(["commit"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: makeOutput(),
+    prompt: {
+      async confirm(message: string) {
+        prompts.push(message);
+        return true;
+      },
+      async chooseCommitAction() {
+        return "commit";
+      },
+      async editMessage(message) {
+        return message;
+      },
+    },
+    gitClient: makeGitClient({
+      getStatusSummary() {
+        return makeStatusSummary({
+          stagedCount: 1,
+          unstagedCount: 1,
+          untrackedCount: 1,
+          clean: false,
+        });
+      },
+      getStagedDiff() {
+        return includesUnstaged
+          ? "diff --git a/all.txt b/all.txt"
+          : "diff --git a/staged.txt b/staged.txt";
+      },
+      stageAllChanges() {
+        includesUnstaged = true;
+      },
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
+    async generateCommitMessage(_, request) {
+      assert.equal(request.diff, "diff --git a/all.txt b/all.txt");
+      return "feat: include unstaged changes";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(commits, ["feat: include unstaged changes"]);
+  assert.ok(
+    prompts.some((message) =>
+      message.includes("Unstaged or untracked changes found. Stage all tracked and untracked changes?"),
+    ),
+  );
+});
+
+test("runCli commit --all stages unstaged changes when staged changes already exist", async () => {
+  const commits: string[] = [];
+  let confirmCalls = 0;
+  let stageAllCalls = 0;
+  let includesUnstaged = false;
+
+  const exitCode = await runCli(["commit", "--all", "--yes"], {
+    cwd: "/repo",
+    env: {
+      ...process.env,
+      OPENROUTER_API_KEY: "test-key",
+    },
+    output: makeOutput(),
+    prompt: {
+      async confirm() {
+        confirmCalls += 1;
+        return true;
+      },
+    },
+    gitClient: makeGitClient({
+      getStatusSummary() {
+        return makeStatusSummary({
+          stagedCount: 1,
+          unstagedCount: 2,
+          untrackedCount: 1,
+          clean: false,
+        });
+      },
+      getStagedDiff() {
+        return includesUnstaged
+          ? "diff --git a/all.txt b/all.txt"
+          : "diff --git a/staged.txt b/staged.txt";
+      },
+      stageAllChanges() {
+        stageAllCalls += 1;
+        includesUnstaged = true;
+      },
+      commitWithMessage(_, message) { commits.push(message); },
+    }),
+    async generateCommitMessage(_, request) {
+      assert.equal(request.diff, "diff --git a/all.txt b/all.txt");
+      return "feat: stage all changes";
+    },
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(confirmCalls, 0);
+  assert.equal(stageAllCalls, 1);
+  assert.deepEqual(commits, ["feat: stage all changes"]);
 });
 
 test("runCli commit can commit and push from the action prompt", async () => {
@@ -567,7 +676,7 @@ test("runCli pr generates a draft, pushes, and creates the PR", async () => {
   }]);
   assert.ok(messages.some((message) => message.includes("Token usage")));
   assert.ok(messages.some((message) => message.includes("Total: 120")));
-  assert.ok(messages.some((message) => message.includes("Estimated cost: 0.00042 credits")));
+  assert.ok(messages.some((message) => message.includes("Estimated cost: $0.00042")));
 });
 
 test("runCli pr supports regeneration with feedback", async () => {

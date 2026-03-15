@@ -79,7 +79,7 @@ export function renderTokenUsage(output: OutputWriter, usage: TokenUsage | undef
     `Total: ${usage.totalTokens}`,
   ];
   if (usage.costCredits !== undefined) {
-    lines.push(`Estimated cost: ${formatCostCredits(usage.costCredits)} credits`);
+    lines.push(`Estimated cost: $${formatCostCredits(usage.costCredits)}`);
   }
 
   output.box(

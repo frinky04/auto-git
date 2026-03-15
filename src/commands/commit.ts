@@ -15,10 +15,7 @@ export async function runCommitFlow(
     stageAll: boolean;
   },
 ): Promise<void> {
-  let diff = ctx.git.getStagedDiff(ctx.cwd);
-  if (!diff.trim()) {
-    diff = await stageChangesOrThrow(ctx, options.stageAll);
-  }
+  const diff = await prepareCommitDiff(ctx, options.stageAll);
 
   const repoRoot = ctx.git.resolveRepoRoot(ctx.cwd);
   const branchName = ctx.git.getCurrentBranch(ctx.cwd);
@@ -104,23 +101,52 @@ export async function runCommitFlow(
   }
 }
 
-async function stageChangesOrThrow(
+async function prepareCommitDiff(
   ctx: CliContext,
   stageAll: boolean,
 ): Promise<string> {
-  if (!ctx.git.hasWorkingTreeChanges(ctx.cwd)) {
+  let diff = ctx.git.getStagedDiff(ctx.cwd);
+  const hasStagedDiff = diff.trim().length > 0;
+
+  if (!hasStagedDiff && !ctx.git.hasWorkingTreeChanges(ctx.cwd)) {
     throw new UserError("No changes found. Modify files before running autogit commit.");
   }
 
-  if (!stageAll) {
+  const status = ctx.git.getStatusSummary(ctx.cwd);
+  const hasUnstagedChanges = status.unstagedCount > 0 || status.untrackedCount > 0;
+
+  if (stageAll) {
+    if (hasUnstagedChanges || !hasStagedDiff) {
+      return stageAllChangesOrThrow(ctx);
+    }
+
+    return diff;
+  }
+
+  if (!hasStagedDiff) {
     const shouldStageAll = await ctx.prompt.confirm(
       "No staged changes found. Stage all tracked and untracked changes?",
     );
     if (!shouldStageAll) {
       throw new UserError("Commit aborted. Stage files manually or rerun with --all.");
     }
+
+    return stageAllChangesOrThrow(ctx);
   }
 
+  if (hasUnstagedChanges) {
+    const shouldStageAll = await ctx.prompt.confirm(
+      "Unstaged or untracked changes found. Stage all tracked and untracked changes?",
+    );
+    if (shouldStageAll) {
+      diff = stageAllChangesOrThrow(ctx);
+    }
+  }
+
+  return diff;
+}
+
+function stageAllChangesOrThrow(ctx: CliContext): string {
   ctx.output.info("Staging all changes.");
   ctx.git.stageAllChanges(ctx.cwd);
 
